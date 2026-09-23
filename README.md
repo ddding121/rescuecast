@@ -1,126 +1,146 @@
-# vinext-starter
+# RescueCast
 
-A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
+**An accessible emergency-communication workspace for turning complex notices into clear, actionable messages.** RescueCast combines structured incident input, real map positioning, easy-read and multilingual outputs, audience-specific guidance, human review, scene images, and one-time feedback in a single public-information workflow.
 
-## Prerequisites
+[Live demo](https://rescuecast.onrender.com/) · [Chinese guide](README.zh-CN.md) · [Validation](docs/VALIDATION.md)
 
-- Node.js `>=22.13.0`
-- Portable: Windows, macOS, or Linux; no Bash required
-- Managed Linux: managed Linux runtime with Bash, `flock`, `curl`, `sha256sum`, and GNU `timeout`
-- Git is required only for publishing
+![RescueCast emergency communication workspace](docs/images/overview.png)
 
-## Sites Lifecycle
+## Why this project
 
-The Sites initializer copies the shared starter and selects managed-linux only when `SITES_MANAGED_LINUX_CONTAINER=1`; otherwise it selects portable. It saves the selection only in ignored `.sites-runtime/execution-profile.json`. Both profiles copy/configure first, then use the plugin's separate `install-dependencies.mjs` step to measure installation independently. Edit source under `app/` and follow the Sites skill for installation, preview, builds, and publishing.
+Emergency information often arrives as dense paragraphs at the moment when people have the least time and attention to interpret it. Generic notices may also exclude older adults, children, deaf users, non-native speakers, or people with cognitive accessibility needs. RescueCast explores how one incident record can produce several audience-appropriate views while keeping a human reviewer in control before publication.
 
-Whenever reopening or moving a checkout, run `node <plugin-root>/scripts/configure-execution-profile.mjs` before project commands. Profile changes do not alter tracked source or require reinstalling otherwise-valid dependencies; restart an existing preview to use the new selection. Do not commit or upload `.sites-runtime/`.
+## Core capabilities
 
-This starter does not use `wrangler.jsonc`.
+- Configure incident type, severity, affected area, time, source notice, and priority audiences.
+- Choose from ten incident types or enter a custom emergency type.
+- Enter a specific place and position the map through server-side geocoding.
+- Display a draggable and zoomable OpenStreetMap with a highlighted risk radius.
+- Generate a standard public notice, easy-read version, English summary, action checklist, and accessibility panel.
+- Read the easy-read notice aloud using browser speech synthesis.
+- Upload up to four scene images, each no larger than 8 MB.
+- Require a three-item human verification checklist before publishing.
+- Save draft/published events in the current interface history.
+- Record one helpful/unhelpful vote per anonymous browser identity.
+- Support large text, enhanced contrast, and reduced-motion preferences.
 
-`install:ci` runs `npm ci` once against the shared lockfile, disables parent-workspace discovery, and includes required dev/optional dependencies despite production/omit settings. Sharp defaults to prebuilt binaries unless explicitly configured otherwise. Do not overlap installers.
+## Workflow
 
-- **Portable:** Preserve host HOME, npm cache, registry, proxy, temporary paths, retry/concurrency settings, and lifecycle-script policy. Use `--prefer-offline --no-audit --no-fund`.
-- **Managed Linux:** Use the existing project-local HOME/cache/tmp setup and Linux install lock, tarball preflight, and timeout. Restore the image-seeded npm cache only when its lockfile hash matches; retain network fallback. Builds keep their existing timeout. These helpers are not invoked by the portable profile.
-
-`scripts/sites-env.mjs` preserves the caller's HOME, npm cache, proxy, XDG, and temporary-directory configuration while defaulting Wrangler and Miniflare state to the checkout. If npm reports an unwritable cache, select a writable path with `npm_config_cache` for that install. The `dev` and `start` scripts also keep Wrangler logs inside the checkout. Generated `.sites-runtime/` and `.wrangler/` directories are disposable and ignored by Git.
-
-On portable, `npm run dev` uses `vinext dev` with HMR, starting at port 5173. Vinext records the running server in ignored `.vinext/` state, rejects an ordinary duplicate launch, and recovers stale state after a stopped process; exactly simultaneous starts can race. Pass `--port <port>` or `--hostname <host>` after `npm run dev --` when needed; keep portable previews on loopback.
-
-For browser QA on managed Linux, use `sites-preview start`. The project's dev script runs Vite and accepts the supervisor's `--host 0.0.0.0 --port 4173 --strictPort` arguments. The internal browser uses `http://terminal.local:4173/`; it is not a user-facing URL. The supervisor owns the preview lifecycle. The ignored local profile survives the supervisor's cleared process environment.
-
-The portable profile simulates ChatGPT sign-in only for loopback development requests. Visit `/signin-with-chatgpt?return_to=/` to sign in as `local_seedy` (`seedy@sites.test`, display name `Seedy`) and `/signout-with-chatgpt?return_to=/` to sign out. The development cookie preserves that identity across server restarts. Mock auth is disabled in the managed-linux profile and is not included in production builds; hosted authentication remains dispatch-owned.
-
-The Worker uses `vinext/server/fetch-handler`, including Vinext's config-aware image handling. After building, `npm start` runs that Worker locally through Wrangler on `127.0.0.1`, sharing `.wrangler/state` with dev preview and local D1 migrations; it does not deploy the site or simulate sign-in. Use the URL printed by the server. Pass `npm start -- --port <port>` to select a different built-preview port.
-
-Local previews use Miniflare's placeholder `Request.cf` metadata without a network lookup. Set `CLOUDFLARE_CF_FETCH_ENABLED=true` to opt into fetching preview metadata; this setting does not change hosted request metadata.
-
-Local tool usage metrics are disabled by default. Set `WRANGLER_SEND_METRICS=true` to opt in.
-
-## Included Shape
-
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `@cloudflare/workers-types` provides Worker types; `cloudflare-env.d.ts` declares optional `DB`/`BUCKET` bindings—update these declarations if binding names change
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Use it as the durable user key; use email and name for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive `oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty `name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by `oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```mermaid
+flowchart TD
+    A[Incident details] --> B[Location geocoding]
+    A --> C[Audience and severity rules]
+    B --> D[Interactive risk map]
+    C --> E[Standard easy-read and English notices]
+    A --> F[Scene image upload]
+    D --> G[Human verification checklist]
+    E --> G
+    F --> G
+    G --> H[Publish record and feedback]
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+## Accessible communication design
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs optional or required ChatGPT sign-in:
+| Need | Product response |
+| --- | --- |
+| Cognitive load | Short easy-read message and three priority actions |
+| Hearing access | Visual alert structure and text-first workflow |
+| Language access | Parallel English summary for the configured incident |
+| Low vision | Large-text and high-contrast controls |
+| Motion sensitivity | Reduced-motion preference |
+| Location clarity | Search-based map positioning and explicit affected-area text |
+| Safety governance | Mandatory human review before publication |
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use the returned `userId` as the stable user key for user-owned records; do not use email as a durable identifier.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send anonymous visitors through Sign in with ChatGPT.
-- In a Server Component, start sign-in with `<a href={chatGPTSignInPath(returnTo)} target="_top">`. The auth helper module is server-only; do not import it into a Client Component.
-- Do not use `fetch`, XHR, a client-side router, or a framework link that can prefetch the sign-in route. SIWC must start as a top-level navigation.
-- Never request the AuthAPI authorization endpoint directly. The dispatch-owned `/signin-with-chatgpt` route must start the SIWC flow.
-- Use `chatGPTSignOutPath(returnTo)` for browser sign-out links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because they depend on per-request identity headers.
+The generated content is rule-based and deterministic. It is a communication prototype, not an official warning system, hazard model, dispatch service, or substitute for emergency authorities.
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the OAuth cookies, and identity header injection. Do not implement app routes for those reserved paths. Routes that do not import and call the helper remain anonymous-compatible.
+## Technology
 
-SIWC establishes identity only; it does not prove workspace membership. Use the Sites hosting platform's access policy controls for workspace-wide restrictions, or enforce explicit server-side membership or allowlist checks.
+- **Application:** TypeScript, React 19, Next.js 16, Tailwind CSS
+- **Mapping:** Leaflet, React Leaflet, OpenStreetMap tiles
+- **Geocoding:** ArcGIS World Geocoding with Nominatim fallback
+- **Persistence:** Node.js SQLite for feedback and image metadata; local file storage for images
+- **Accessibility:** semantic controls, ARIA labels, browser speech synthesis
+- **Deployment:** Render / Node.js 22
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write actions tied to the current ChatGPT user. Leave public content anonymous.
+## Verified project evidence
 
-## Local D1 migrations
+| Check | Result | Scope |
+| --- | --- | --- |
+| Locked dependency installation | Passed with pnpm 9.15.9 | 646 packages from committed lockfile |
+| Production build | **Passed** | Next.js compilation, TypeScript, static generation, three API routes |
+| Map implementation | Real Leaflet map and two-provider geocoding route | External services can rate-limit or fail |
+| Feedback constraint | Unique SQLite `user_id` plus duplicate check | Identity is cookie-based, not a verified account |
+| Scene image boundary | Four UI selections; 8 MB enforced per upload route | Free-host filesystem is temporary |
 
-For a D1-backed local preview, generate SQL with `npm run db:generate`. Build once through the Sites skill's build entrypoint (or `npm run build` for standalone use) to generate `dist/server/wrangler.json`, rebuilding if bindings change. From the project root, apply each pending migration in order:
+The production build was repeated on 22 September 2026. The repository does not yet contain automated browser, geocoding-contract, or accessibility-audit tests; see [validation notes](docs/VALIDATION.md).
 
-```sh
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_example.sql
+## Run locally
+
+Requirements: Node.js 22.13+ and pnpm 9.15.9.
+
+```bash
+corepack prepare pnpm@9.15.9 --activate
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-Replace the filename with the pending migration and `DB` with your D1 binding name if different. Use `.wrangler/state`, not `.wrangler/state/v3`; Wrangler adds the versioned directories. Do not replay migrations already applied locally. This updates only the preview database; publishing applies production migrations separately.
+Open <http://localhost:3000>. Optional local storage configuration:
 
-## Diagnostic Commands
+```dotenv
+DATA_DIR=.rescuecast-data
+```
 
-- `npm run install:ci`: perform the one locked dependency install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: preview the built Worker locally with D1/R2 support
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+The directory stores SQLite data and uploaded images and is ignored by Git.
 
-When using the Sites plugin, follow its skill instructions for installation, builds, and publishing. These npm commands remain available for standalone use.
+## Production checks
 
-The portable build runs Vinext directly without a host `timeout` command. The managed-linux build uses `scripts/build-verified.sh` and its existing `SITES_BUILD_TIMEOUT` setting.
+```bash
+pnpm lint
+pnpm build
+pnpm start
+```
 
-## Learn More
+## Repository map
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+```text
+app/page.tsx              Emergency-notice workspace and accessibility controls
+components/risk-map.tsx   Leaflet map, marker, radius, and recentering
+app/api/geocode/          ArcGIS and Nominatim geocoding proxy
+app/api/scene-images/     Private image upload and retrieval
+app/api/feedback/         One-vote-per-browser feedback endpoint
+lib/server-store.ts       SQLite schema, storage paths, anonymous session cookie
+render.yaml               Render deployment blueprint
+docs/                     Validation and portfolio evidence
+```
+
+## Privacy, security, and deployment limits
+
+- The service creates an anonymous HTTP-only cookie to separate feedback and private scene images.
+- The cookie is a browser identity, not authentication and not proof of a real-world account.
+- Uploaded images are restricted to the uploader's cookie identity when retrieved through the application.
+- File names are sanitised before storage and database access uses parameterised statements.
+- On the free Render configuration, `DATA_DIR=/tmp/rescuecast-data`; votes and images can disappear when the service restarts or is redeployed.
+- Map searches are sent to ArcGIS and, if needed, Nominatim. Map tiles are requested from OpenStreetMap.
+- Production use would require authenticated roles, durable object storage, moderation, retention rules, rate limiting, and an official data source.
+
+## Current limits
+
+- Emergency recommendations are generic templates and must be reviewed by qualified personnel.
+- English output is a structured summary rather than certified translation.
+- Risk radius is illustrative and not calculated from hazard data.
+- Geocoding quality depends on third-party coverage and service availability.
+- Event history is primarily interface state and is not a durable incident-management database.
+- One-vote enforcement can be bypassed by clearing cookies or changing browsers.
+
+## Project contribution
+
+Luo Dingrui defined the public-service problem, accessibility requirements, incident types, custom time/location workflow, map positioning, scene-image upload, one-time feedback requirement, and manual release process; he also completed iterative testing and deployment. AI-assisted development tools supported implementation and debugging. The project documentation makes its simulated and production-ready boundaries explicit.
+
+## Roadmap
+
+- Add authenticated publisher and reviewer roles.
+- Replace temporary disk storage with durable object storage and a managed database.
+- Add signed upload URLs, image moderation, and retention controls.
+- Integrate verified official alert feeds and hazard geometries.
+- Run keyboard, screen-reader, colour-contrast, and reduced-motion audits.
+- Add automated geocoding fallback and API-route tests.
